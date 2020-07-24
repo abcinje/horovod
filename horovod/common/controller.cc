@@ -235,10 +235,10 @@ ResponseList Controller::ComputeResponseList(std::atomic_bool& shut_down,
 
       // Process messages.
       for (int i = 1; i < size_; ++i) {
-        LOG(TRACE) << "Adding messages from rank " << i;
         auto received_message_list = ready_list[i];
         for (auto& received_message : received_message_list.requests()) {
           auto& received_name = received_message.tensor_name();
+          LOG(TRACE) << "Adding message from rank " << i << " (" << received_name << ")";
 
           if (received_message.request_type() == Request::JOIN) {
             state.joined_size++;

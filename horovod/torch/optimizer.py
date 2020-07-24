@@ -24,8 +24,11 @@ import torch
 from horovod.torch.compression import Compression
 from horovod.torch.mpi_ops import allreduce_async_
 from horovod.torch.mpi_ops import synchronize
-from horovod.torch.mpi_ops import size
+from horovod.torch.mpi_ops import size, rank
 from horovod.torch.mpi_ops import Average, Adasum
+
+import datetime
+
 
 
 class _DistributedOptimizer(torch.optim.Optimizer):
@@ -73,6 +76,12 @@ class _DistributedOptimizer(torch.optim.Optimizer):
         self._should_synchronize = True
         if size() > 1 or os.environ.get('HOROVOD_ELASTIC') == '1':
             self._register_hooks()
+
+        self.sync_log = open('sync_log', 'w')
+
+
+    def log(self, rank, message):
+        self.sync_log.write(f'[{datetime.datetime.now()}] [{rank}]: ' + message)
 
     def load_state_dict(self, *args, **kwargs):
         self._handles = {}
@@ -145,7 +154,13 @@ class _DistributedOptimizer(torch.optim.Optimizer):
                 handle, ctx = self._allreduce_grad_async(p)
                 self._handles[p] = (handle, ctx)
         for p, (handle, ctx) in self._handles.items():
-            output = synchronize(handle)
+            name = self._parameter_names.get(p)
+            if rank() == 0:
+                self.log(0, "Start synchronization (" + name + ")\n")
+                output = synchronize(handle)
+                self.log(rank(), "Finish synchronization (" + name + ")\n")
+            else:
+                output = synchronize(handle)
             self._allreduce_delay[p] = self.backward_passes_per_step
             p.grad.set_(self._compression.decompress(output, ctx))
         self._handles.clear()
